@@ -36,28 +36,12 @@ public:
         estaciones.push_back(estacion);
     }
 
-    void agregarEstacionEntre(Estacion* estacion, const string& nombreEstacionAnterior, const string& nombreEstacionSiguiente) {
-        auto itAnterior = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == nombreEstacionAnterior; });
-        auto itSiguiente = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == nombreEstacionSiguiente; });
-
-        if (itAnterior != estaciones.end() && itSiguiente != estaciones.end()) {
-            estaciones.insert(itSiguiente, estacion);
-        } else {
-            cout << "No se pudo agregar la estación. Asegúrese de que las estaciones existan en la línea." << endl;
-        }
-    }
-
-    void agregarEstacionInicial(Estacion* estacion) {
-        if (!estaciones.empty()) {
-            estaciones.insert(estaciones.begin(), estacion);
-        } else {
-            cout << "La línea está vacía. La estación se agregará normalmente al final." << endl;
-            estaciones.push_back(estacion);
-        }
-    }
-
     bool tieneEstacion(const string& nombreEstacion) const {
         return find_if(estaciones.begin(), estaciones.end(), [&](Estacion* estacion) { return estacion->getNombre() == nombreEstacion; }) != estaciones.end();
+    }
+
+    bool tieneNombre(const string& _nombre) const {
+        return nombre == _nombre;
     }
 
     string getNombre() const { return nombre; }
@@ -94,13 +78,31 @@ public:
         }
     }
 
-    void agregarLinea(Linea* linea, bool esTranvia = false) {
-        if (esTranvia) {
-            string nombreTranvia = linea->getNombre() + " Tran";
-            linea = new Linea(nombreTranvia);
+    bool existeLinea(const string& nombreLinea) const {
+        return find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->tieneNombre(nombreLinea); }) != lineas.end();
+    }
+
+    bool existeEstacionEnLinea(const string& nombreLinea, const string& nombreEstacion) const {
+        auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->tieneNombre(nombreLinea); });
+        if (it != lineas.end()) {
+            return (*it)->tieneEstacion(nombreEstacion);
         }
+        return false;
+    }
+
+    bool agregarLinea(Linea* linea, bool esTranvia) {
+        string nombreLinea = linea->getNombre();
+        if (existeLinea(nombreLinea)) {
+            cout << "Ya existe una línea con ese nombre." << endl;
+            return false;
+        }
+        if (esTranvia) {
+            nombreLinea += "tran";
+        }
+        linea->getNombre() = nombreLinea;
         lineas.push_back(linea);
         guardarDatos();
+        return true;
     }
 
     int cantidadLineas() const {
@@ -132,28 +134,24 @@ public:
     void agregarEstacion(const string& nombreLinea, Estacion* estacion) {
         auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->getNombre() == nombreLinea; });
         if (it != lineas.end()) {
-            string respuesta;
-            cout << "¿Desea agregar la estación entre dos estaciones existentes? (si/no): ";
-            cin >> respuesta;
-
-            if (respuesta == "si") {
-                string nombreEstacionAnterior, nombreEstacionSiguiente;
-                cout << "Ingrese el nombre de la estación anterior: ";
-                cin >> nombreEstacionAnterior;
-                cout << "Ingrese el nombre de la estación siguiente: ";
-                cin >> nombreEstacionSiguiente;
-                (*it)->agregarEstacionEntre(estacion, nombreEstacionAnterior, nombreEstacionSiguiente);
-            } else {
-                cout << "¿Desea que esta sea la estación inicial de la línea? (si/no): ";
-                cin >> respuesta;
-                if (respuesta == "si") {
-                    (*it)->agregarEstacionInicial(estacion);
-                } else {
-                    (*it)->agregarEstacion(estacion);
-                }
+            if (!(*it)->tieneEstacion(estacion->getNombre())) {
+                (*it)->agregarEstacion(estacion);
+                guardarDatos();
             }
+        }
+    }
 
-            guardarDatos();
+    void agregarEstacionEntre(Estacion* estacion, const string& nombreLinea, const string& nombreEstacionAnterior, const string& nombreEstacionSiguiente) {
+        auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->getNombre() == nombreLinea; });
+        if (it != lineas.end()) {
+            auto& estaciones = (*it)->obtenerEstaciones();
+            auto itAnterior = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == nombreEstacionAnterior; });
+            auto itSiguiente = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == nombreEstacionSiguiente; });
+            if (itAnterior != estaciones.end() && itSiguiente != estaciones.end()) {
+                auto itPosicion = itSiguiente;
+                estaciones.insert(itPosicion, estacion);
+                guardarDatos();
+            }
         }
     }
 
@@ -237,7 +235,7 @@ public:
                 Estacion* estacion = new Estacion(nombreEstacion, esTransferencia);
                 linea->agregarEstacion(estacion);
             }
-            agregarLinea(linea);
+            agregarLinea(linea, false);
         }
 
         archivo.close();
@@ -298,24 +296,43 @@ int main() {
 
         if (opcion == 1) {
             while (true) {
-                string nombreLinea;
-                bool esTranvia = false;
+                mostrarMenuLineas();
+                int opcionLineas;
+                cin >> opcionLineas;
 
-                cout << "Ingrese el nombre de la línea: ";
-                cin >> nombreLinea;
-                cout << "¿Es una línea de tranvía? (si/no): ";
-                string respuesta;
-                cin >> respuesta;
-                if (respuesta == "si") {
-                    esTranvia = true;
+                if (opcionLineas == 1) {
+                    string nombreLinea;
+                    bool esTranvia = false;
+
+                    cout << "Ingrese el nombre de la línea: ";
+                    cin >> nombreLinea;
+                    if (!metro.existeLinea(nombreLinea)) {
+                        cout << "¿Es una línea de tranvía? (1: Sí, 0: No): ";
+                        cin >> esTranvia;
+                        Linea* linea = new Linea(nombreLinea);
+                        if (metro.agregarLinea(linea, esTranvia)) {
+                            cout << "Línea agregada correctamente." << endl;
+                        }
+                    } else {
+                        cout << "Ya existe una línea con ese nombre." << endl;
+                    }
+                } else if (opcionLineas == 2) {
+                    string nombreLinea;
+                    cout << "Ingrese el nombre de la línea a eliminar: ";
+                    cin >> nombreLinea;
+                    if (!metro.eliminarLinea(nombreLinea)) {
+                        cout << "No se pudo eliminar la línea. Asegúrese de que no tenga estaciones." << endl;
+                    }
+                } else if (opcionLineas == 3) {
+                    metro.mostrarLineas();
+                } else {
+                    cout << "Opción inválida. Por favor, ingrese un número válido." << endl;
                 }
 
-                Linea* linea = new Linea(nombreLinea);
-                metro.agregarLinea(linea, esTranvia);
-
-                cout << "¿Desea agregar otra línea? (si/no): ";
-                cin >> respuesta;
-                if (respuesta != "si") break;
+                cout << "¿Desea realizar otra operación en líneas? (1: Sí, 0: No): ";
+                int continuar;
+                cin >> continuar;
+                if (continuar != 1) break;
             }
         } else if (opcion == 2) {
             while (true) {
@@ -326,16 +343,42 @@ int main() {
                 if (opcionEstaciones == 1) {
                     string nombreLinea, nombreEstacion;
                     bool esTransferencia;
+                    bool esInicial = false;
+                    bool agregarEntre = false;
+                    string estacionAnterior, estacionSiguiente;
 
                     cout << "Ingrese el nombre de la línea: ";
                     cin >> nombreLinea;
                     cout << "Ingrese el nombre de la estación: ";
                     cin >> nombreEstacion;
-                    cout << "¿Es una estación de transferencia? (1: Sí, 0: No): ";
-                    cin >> esTransferencia;
-
-                    Estacion* estacion = new Estacion(nombreEstacion, esTransferencia);
-                    metro.agregarEstacion(nombreLinea, estacion);
+                    if (!metro.existeEstacionEnLinea(nombreLinea, nombreEstacion)) {
+                        cout << "¿Es una estación de transferencia? (1: Sí, 0: No): ";
+                        cin >> esTransferencia;
+                        cout << "¿Es la estación inicial de la línea? (1: Sí, 0: No): ";
+                        cin >> esInicial;
+                        if (!esInicial) {
+                            cout << "¿Desea agregarla entre dos estaciones existentes? (1: Sí, 0: No): ";
+                            cin >> agregarEntre;
+                            if (agregarEntre) {
+                                cout << "Ingrese el nombre de la estación anterior: ";
+                                cin >> estacionAnterior;
+                                cout << "Ingrese el nombre de la estación siguiente: ";
+                                cin >> estacionSiguiente;
+                            }
+                        }
+                        Estacion* estacion = new Estacion(nombreEstacion, esTransferencia);
+                        if (esInicial) {
+                            metro.agregarEstacion(nombreLinea, estacion);
+                        } else {
+                            if (agregarEntre) {
+                                metro.agregarEstacionEntre(estacion, nombreLinea, estacionAnterior, estacionSiguiente);
+                            } else {
+                                metro.agregarEstacion(nombreLinea, estacion);
+                            }
+                        }
+                    } else {
+                        cout << "Ya existe una estación con ese nombre en esta línea." << endl;
+                    }
                 } else if (opcionEstaciones == 2) {
                     string nombreLinea, nombreEstacion;
 
@@ -350,6 +393,7 @@ int main() {
                 } else {
                     cout << "Opción inválida. Por favor, ingrese un número válido." << endl;
                 }
+
                 cout << "¿Desea realizar otra operación en estaciones? (1: Sí, 0: No): ";
                 int continuar;
                 cin >> continuar;
