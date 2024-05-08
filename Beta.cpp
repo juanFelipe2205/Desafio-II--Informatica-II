@@ -1,24 +1,27 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 using namespace std;
 
 class Estacion {
 private:
     string nombre;
-    int tiempoSiguiente;
-    int tiempoAnterior;
     bool esTransferencia;
 
 public:
-    Estacion(string _nombre, int _tiempoSiguiente, int _tiempoAnterior, bool _esTransferencia) 
-        : nombre(_nombre), tiempoSiguiente(_tiempoSiguiente), tiempoAnterior(_tiempoAnterior), esTransferencia(_esTransferencia) {}
+    Estacion(string _nombre, bool _esTransferencia) 
+        : nombre(_nombre), esTransferencia(_esTransferencia) {}
 
     string getNombre() const { return nombre; }
-    int getTiempoSiguiente() const { return tiempoSiguiente; }
-    int getTiempoAnterior() const { return tiempoAnterior; }
     bool esEstacionTransferencia() const { return esTransferencia; }
+
+    string toString() const {
+        return nombre;
+    }
 };
 
 class Linea {
@@ -33,27 +36,11 @@ public:
         estaciones.push_back(estacion);
     }
 
-    int cantidadEstaciones() const {
-        return estaciones.size();
-    }
-
     bool tieneEstacion(const string& nombreEstacion) const {
-        for (const auto& estacion : estaciones) {
-            if (estacion->getNombre() == nombreEstacion)
-                return true;
-        }
-        return false;
+        return find_if(estaciones.begin(), estaciones.end(), [&](Estacion* estacion) { return estacion->getNombre() == nombreEstacion; }) != estaciones.end();
     }
 
     string getNombre() const { return nombre; }
-
-    bool tieneEstacionesTransferencia() const {
-        for (const auto& estacion : estaciones) {
-            if (estacion->esEstacionTransferencia())
-                return true;
-        }
-        return false;
-    }
 
     const vector<Estacion*>& obtenerEstaciones() const {
         return estaciones;
@@ -62,6 +49,15 @@ public:
     vector<Estacion*>& obtenerEstaciones() {
         return estaciones;
     }
+
+    string toString() const {
+        stringstream ss;
+        ss << nombre << endl;
+        for (const auto& estacion : estaciones) {
+            ss << estacion->toString() << endl;
+        }
+        return ss.str();
+    }
 };
 
 class RedMetro {
@@ -69,8 +65,18 @@ private:
     vector<Linea*> lineas;
 
 public:
+    ~RedMetro() {
+        for (auto& linea : lineas) {
+            for (auto& estacion : linea->obtenerEstaciones()) {
+                delete estacion;
+            }
+            delete linea;
+        }
+    }
+
     void agregarLinea(Linea* linea) {
         lineas.push_back(linea);
+        guardarDatos();
     }
 
     int cantidadLineas() const {
@@ -80,46 +86,44 @@ public:
     int cantidadEstaciones() const {
         int totalEstaciones = 0;
         for (const auto& linea : lineas) {
-            totalEstaciones += linea->cantidadEstaciones();
+            totalEstaciones += linea->obtenerEstaciones().size();
         }
         return totalEstaciones;
     }
 
     bool eliminarLinea(const string& nombreLinea) {
-        for (auto it = lineas.begin(); it != lineas.end(); ++it) {
-            if ((*it)->tieneEstacion(nombreLinea)) {
+        auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->getNombre() == nombreLinea; });
+        if (it != lineas.end()) {
+            if (!(*it)->obtenerEstaciones().empty()) {
                 return false; 
             }
-            if ((*it)->getNombre() == nombreLinea) {
-                delete *it;
-                lineas.erase(it);
-                return true; 
-            }
+            delete *it;
+            lineas.erase(it);
+            guardarDatos();
+            return true;
         }
         return false; 
     }
 
     void agregarEstacion(const string& nombreLinea, Estacion* estacion) {
-        for (auto& linea : lineas) {
-            if (linea->getNombre() == nombreLinea) {
-                linea->agregarEstacion(estacion);
-                break;
+        auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->getNombre() == nombreLinea; });
+        if (it != lineas.end()) {
+            if (!(*it)->tieneEstacion(estacion->getNombre())) {
+                (*it)->agregarEstacion(estacion);
+                guardarDatos();
             }
         }
     }
 
     void eliminarEstacion(const string& nombreLinea, const string& nombreEstacion) {
-        for (auto& linea : lineas) {
-            if (linea->getNombre() == nombreLinea) {
-                auto& estaciones = linea->obtenerEstaciones();
-                for (auto it = estaciones.begin(); it != estaciones.end(); ++it) {
-                    if ((*it)->getNombre() == nombreEstacion && !(*it)->esEstacionTransferencia()) {
-                        delete *it;
-                        estaciones.erase(it);
-                        break;
-                    }
-                }
-                break;
+        auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->getNombre() == nombreLinea; });
+        if (it != lineas.end()) {
+            auto& estaciones = (*it)->obtenerEstaciones();
+            auto itEstacion = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == nombreEstacion; });
+            if (itEstacion != estaciones.end()) {
+                delete *itEstacion;
+                estaciones.erase(itEstacion);
+                guardarDatos();
             }
         }
     }
@@ -132,21 +136,118 @@ public:
         }
         return false;
     }
+
+    void simularTiempoDeLlegada(const string& estacionSalida, const string& estacionLlegada, const string& nombreLinea) const {
+        auto it = find_if(lineas.begin(), lineas.end(), [&](Linea* l) { return l->getNombre() == nombreLinea; });
+        if (it != lineas.end()) {
+            const auto& estaciones = (*it)->obtenerEstaciones();
+            auto itSalida = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == estacionSalida; });
+            auto itLlegada = find_if(estaciones.begin(), estaciones.end(), [&](Estacion* est) { return est->getNombre() == estacionLlegada; });
+            if (itSalida != estaciones.end() && itLlegada != estaciones.end()) {
+                if (itSalida < itLlegada) {
+                    int tiempoTotal = 0;
+                    for (auto it = itSalida; it != itLlegada; ++it) {
+                        tiempoTotal += 5; 
+                    }
+                    cout << "El tiempo estimado de llegada es de " << tiempoTotal << " minutos." << endl;
+                } else {
+                    cout << "La estación de llegada debe ser posterior a la estación de salida en la línea." << endl;
+                }
+            } else {
+                cout << "Al menos una de las estaciones ingresadas no existe en la línea." << endl;
+            }
+        } else {
+            cout << "La línea ingresada no existe." << endl;
+        }
+    }
+
+    void guardarDatos() const {
+        ofstream archivo("datosred.txt");
+        if (!archivo.is_open()) {
+            cerr << "Error al abrir el archivo de datos." << endl;
+            return;
+        }
+
+        for (const auto& linea : lineas) {
+            archivo << linea->toString();
+        }
+
+        archivo.close();
+    }
+
+    void cargarDatos() {
+        ifstream archivo("datosred.txt");
+        if (!archivo.is_open()) {
+            cout << "No se encontró el archivo de datos. Se creará uno nuevo." << endl;
+            guardarDatos();
+            return;
+        }
+
+        string nombreLinea;
+        while (getline(archivo, nombreLinea)) {
+            Linea* linea = new Linea(nombreLinea);
+            string estacionStr;
+            while (getline(archivo, estacionStr) && !estacionStr.empty()) {
+                stringstream ss(estacionStr);
+                string nombreEstacion;
+                bool esTransferencia;
+                ss >> nombreEstacion >> esTransferencia;
+                Estacion* estacion = new Estacion(nombreEstacion, esTransferencia);
+                linea->agregarEstacion(estacion);
+            }
+            agregarLinea(linea);
+        }
+
+        archivo.close();
+    }
+
+    void mostrarLineas() const {
+        cout << "----- Líneas -----" << endl;
+        for (const auto& linea : lineas) {
+            cout << "- " << linea->getNombre() << endl;
+        }
+    }
+
+    void mostrarEstaciones() const {
+        cout << "----- Estaciones -----" << endl;
+        for (const auto& linea : lineas) {
+            cout << linea->getNombre() << ":" << endl;
+            for (const auto& estacion : linea->obtenerEstaciones()) {
+                cout << "- " << estacion->getNombre() << endl;
+            }
+        }
+    }
 };
 
 void mostrarMenu() {
     cout << "----- Menú -----" << endl;
-    cout << "1. Agregar estación a una línea" << endl;
-    cout << "2. Eliminar estación de una línea" << endl;
-    cout << "3. Agregar línea a la red metro" << endl;
-    cout << "4. Eliminar línea de la red metro" << endl;
-    cout << "5. Verificar si una estación pertenece a una línea" << endl;
-    cout << "6. Salir" << endl;
+    cout << "1. Administrar líneas" << endl;
+    cout << "2. Administrar estaciones" << endl;
+    cout << "3. Verificar si una estación pertenece a una línea" << endl;
+    cout << "4. Simular tiempo de llegada" << endl;
+    cout << "5. Salir" << endl;
+    cout << "Ingrese el número de la opción que desea realizar: ";
+}
+
+void mostrarMenuLineas() {
+    cout << "----- Menú Líneas -----" << endl;
+    cout << "1. Agregar línea" << endl;
+    cout << "2. Eliminar línea" << endl;
+    cout << "3. Mostrar líneas" << endl;
+    cout << "Ingrese el número de la opción que desea realizar: ";
+}
+
+void mostrarMenuEstaciones() {
+    cout << "----- Menú Estaciones -----" << endl;
+    cout << "1. Agregar estación" << endl;
+    cout << "2. Eliminar estación" << endl;
+    cout << "3. Mostrar estaciones" << endl;
     cout << "Ingrese el número de la opción que desea realizar: ";
 }
 
 int main() {
     RedMetro metro;
+    metro.cargarDatos();
 
     while (true) {
         mostrarMenu();
@@ -154,46 +255,75 @@ int main() {
         cin >> opcion;
 
         if (opcion == 1) {
-            string nombreLinea, nombreEstacion;
-            int tiempoSiguiente, tiempoAnterior;
-            bool esTransferencia;
+            while (true) {
+                mostrarMenuLineas();
+                int opcionLineas;
+                cin >> opcionLineas;
 
-            cout << "Ingrese el nombre de la línea: ";
-            cin >> nombreLinea;
-            cout << "Ingrese el nombre de la estación: ";
-            cin >> nombreEstacion;
-            cout << "Ingrese el tiempo hacia la siguiente estación (en segundos): ";
-            cin >> tiempoSiguiente;
-            cout << "Ingrese el tiempo hacia la estación anterior (en segundos): ";
-            cin >> tiempoAnterior;
-            cout << "¿Es una estación de transferencia? (1: Sí, 0: No): ";
-            cin >> esTransferencia;
+                if (opcionLineas == 1) {
+                    string nombreLinea;
+                    cout << "Ingrese el nombre de la línea a agregar: ";
+                    cin >> nombreLinea;
+                    Linea* linea = new Linea(nombreLinea);
+                    metro.agregarLinea(linea);
+                } else if (opcionLineas == 2) {
+                    string nombreLinea;
+                    cout << "Ingrese el nombre de la línea a eliminar: ";
+                    cin >> nombreLinea;
+                    if (!metro.eliminarLinea(nombreLinea)) {
+                        cout << "No se pudo eliminar la línea. Asegúrese de que no tenga estaciones." << endl;
+                    }
+                } else if (opcionLineas == 3) {
+                    metro.mostrarLineas();
+                } else {
+                    cout << "Opción inválida. Por favor, ingrese un número válido." << endl;
+                }
 
-            Estacion* estacion = new Estacion(nombreEstacion, tiempoSiguiente, tiempoAnterior, esTransferencia);
-            metro.agregarEstacion(nombreLinea, estacion);
-        } else if (opcion == 2) {
-            string nombreLinea, nombreEstacion;
-
-            cout << "Ingrese el nombre de la línea: ";
-            cin >> nombreLinea;
-            cout << "Ingrese el nombre de la estación a eliminar: ";
-            cin >> nombreEstacion;
-
-            metro.eliminarEstacion(nombreLinea, nombreEstacion);
-        } else if (opcion == 3) {
-            string nombreLinea;
-            cout << "Ingrese el nombre de la línea a agregar: ";
-            cin >> nombreLinea;
-            Linea* linea = new Linea(nombreLinea);
-            metro.agregarLinea(linea);
-        } else if (opcion == 4) {
-            string nombreLinea;
-            cout << "Ingrese el nombre de la línea a eliminar: ";
-            cin >> nombreLinea;
-            if (!metro.eliminarLinea(nombreLinea)) {
-                cout << "No se pudo eliminar la línea. Asegúrese de que no tenga estaciones." << endl;
+                cout << "¿Desea realizar otra operación en líneas? (1: Sí, 0: No): ";
+                int continuar;
+                cin >> continuar;
+                if (continuar != 1) break;
             }
-        } else if (opcion == 5) {
+        } else if (opcion == 2) {
+            while (true) {
+                mostrarMenuEstaciones();
+                int opcionEstaciones;
+                cin >> opcionEstaciones;
+
+                if (opcionEstaciones == 1) {
+                    string nombreLinea, nombreEstacion;
+                    bool esTransferencia;
+
+                    cout << "Ingrese el nombre de la línea: ";
+                    cin >> nombreLinea;
+                    cout << "Ingrese el nombre de la estación: ";
+                    cin >> nombreEstacion;
+                    cout << "¿Es una estación de transferencia? (1: Sí, 0: No): ";
+                    cin >> esTransferencia;
+
+                    Estacion* estacion = new Estacion(nombreEstacion, esTransferencia);
+                    metro.agregarEstacion(nombreLinea, estacion);
+                } else if (opcionEstaciones == 2) {
+                    string nombreLinea, nombreEstacion;
+
+                    cout << "Ingrese el nombre de la línea: ";
+                    cin >> nombreLinea;
+                    cout << "Ingrese el nombre de la estación a eliminar: ";
+                    cin >> nombreEstacion;
+
+                    metro.eliminarEstacion(nombreLinea, nombreEstacion);
+                } else if (opcionEstaciones == 3) {
+                    metro.mostrarEstaciones();
+                } else {
+                    cout << "Opción inválida. Por favor, ingrese un número válido." << endl;
+                }
+
+                cout << "¿Desea realizar otra operación en estaciones? (1: Sí, 0: No): ";
+                int continuar;
+                cin >> continuar;
+                if (continuar != 1) break;
+            }
+        } else if (opcion == 3) {
             string nombreLinea, nombreEstacion;
             cout << "Ingrese el nombre de la línea: ";
             cin >> nombreLinea;
@@ -204,7 +334,16 @@ int main() {
             } else {
                 cout << "La estación no pertenece a la línea." << endl;
             }
-        } else if (opcion == 6) {
+        } else if (opcion == 4) {
+            string nombreLinea, estacionSalida, estacionLlegada;
+            cout << "Ingrese el nombre de la línea: ";
+            cin >> nombreLinea;
+            cout << "Ingrese el nombre de la estación de salida: ";
+            cin >> estacionSalida;
+            cout << "Ingrese el nombre de la estación de llegada: ";
+            cin >> estacionLlegada;
+            metro.simularTiempoDeLlegada(estacionSalida, estacionLlegada, nombreLinea);
+        } else if (opcion == 5) {
             break;
         } else {
             cout << "Opción inválida. Por favor, ingrese un número válido." << endl;
@@ -213,5 +352,6 @@ int main() {
 
     return 0;
 }
+
 
 
